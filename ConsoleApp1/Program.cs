@@ -180,7 +180,13 @@ class Program
 
         var prices = historyQuery.ToList();
 
-        if (prices.Count < 2) return 0.025; // Default fallback if data is missing
+        if (prices.Count < 2) 
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"\n[VOLATILITY WARNING] Insufficient price history for {commodity} ({deliveryMonth}). Defaulting to 2.50% fallback!");
+            Console.ResetColor();
+            return 0.025;
+        }
 
         // 1. Daily Percentage Returns: (P_t - P_{t-1}) / P_{t-1}
         var returns = new List<double>();
@@ -369,6 +375,9 @@ class Program
 
             if (!bucketVolatility.TryGetValue((trade.Commodity, trade.DeliveryMonth), out var volatility))
             {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[PFE WARNING] Missing volatility for trade {trade.TradeID} ({trade.Commodity} - {trade.DeliveryMonth}). Defaulting to 2.50% fallback!");
+                Console.ResetColor();
                 volatility = 0.025;
             }
 
@@ -534,7 +543,10 @@ class Program
 
             if (!bucketVolatility.TryGetValue((commodity, month), out var dailyVolatility))
             {
-                dailyVolatility = 0.025; // Default fallback if missing
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"   [VOLATILITY WARNING] Missing measured volatility for ({commodity}, {month}). Defaulting to 2.50% fallback!");
+                Console.ResetColor();
+                dailyVolatility = 0.025;
             }
 
             var netPos = CalculateBucketPosition(bucketTrades);
