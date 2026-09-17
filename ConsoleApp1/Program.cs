@@ -117,7 +117,14 @@ class Program
             switch (choice)
             {
                 case "1":
-                    AnalyzeExistingTrades(conn, marketPrices, bucketVolatility);
+                    Console.Write("Enter Horizon in Days (e.g., 1 or 10): ");
+                    if (!int.TryParse(Console.ReadLine(), out int horizon) || horizon <= 0) horizon = 1;
+
+                    Console.Write("Enter Confidence Level % (95 or 99): ");
+                    string confInput = Console.ReadLine() ?? "95";
+                    double zScore = confInput.Trim() == "99" ? 2.326 : 1.645;
+
+                    AnalyzeExistingTrades(conn, marketPrices, bucketVolatility, zScore, horizon);
                     AnalyzeCounterpartyExposure(conn, marketPrices, bucketVolatility, creditLimits);
                     break;
                 case "2":
@@ -302,8 +309,8 @@ class Program
         return historyList;
     }
 
-    static double CalculateBucketVar(double netPosition, double currentPrice, double volatility, double zScore = 1.645) =>
-        Math.Abs(netPosition) * currentPrice * volatility * zScore;
+    static double CalculateBucketVar(double netPosition, double currentPrice, double volatility, double zScore, int horizonDays) =>
+        Math.Abs(netPosition) * currentPrice * volatility * zScore * Math.Sqrt(horizonDays);
 
     static void WriteNewTrade(NpgsqlConnection connection, Trade newTrade)
     {
@@ -490,7 +497,9 @@ class Program
     static void AnalyzeExistingTrades(
         NpgsqlConnection connection, 
         Dictionary<(string Commodity, string DeliveryMonth), double> marketPrices, 
-        Dictionary<(string Commodity, string DeliveryMonth), double> bucketVolatility)
+        Dictionary<(string Commodity, string DeliveryMonth), double> bucketVolatility,
+        double zScore = 1.645,
+        int horizonDays = 1)
     {
         var trades = GetAllTrades(connection);
 
@@ -531,17 +540,18 @@ class Program
             var netPos = CalculateBucketPosition(bucketTrades);
             var bucketPnl = CalculateBucketMtmPnl(bucketTrades, marketPrice, netPos);
             var bucketExposure = CalculateBucketExposure(netPos);
-            var bucketVar = CalculateBucketVar(netPos, marketPrice, dailyVolatility);
-            
+            var bucketVar = CalculateBucketVar(netPos, marketPrice, dailyVolatility, zScore, horizonDays);
+
             totalPortfolioVar += bucketVar;
             var unit = commodity == "Power" ? "MWh" : "MMBtu";
+            string confLabel = Math.Abs(zScore - 2.326) < 0.01 ? "99%" : "95%";
 
             Console.WriteLine($"\n[{commodity}] - {month}");
             Console.WriteLine($"   Net Position:  {netPos:N0} {unit}");
-            Console.WriteLine($"   Volatility:    {dailyVolatility * 100:F2}%");
+            Console.WriteLine($"   Volatility:    {dailyVolatility * 100:F3}%");
             Console.WriteLine($"   MTM P&L:       ${bucketPnl:N2}");
             Console.WriteLine($"   Risk Exposure: ${bucketExposure:N2} per 1¢ move");
-            Console.WriteLine($"   1-Day 95% VaR: ${bucketVar:N2}");
+            Console.WriteLine($"   {horizonDays}-Day {confLabel} VaR: ${bucketVar:N2}");
         }
 
         Console.WriteLine("\n-----------------------------------------");
